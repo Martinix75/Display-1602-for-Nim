@@ -9,11 +9,12 @@ testet with Nim 1.6.6
 ## (HHD44780) via the I2C connection (with PCF8574 module).
 from sequtils import toSeq
 from math import round
-import picostdlib/[stdio, gpio, i2c, time]
+import picostdlib/pico/[stdio, time]
+import picostdlib/hardware/[gpio, i2c]
 #import picostdlib
 
 const 
-  disp1602Ver* = "1.2.2"
+  disp1602Ver* = "1.3.0" #for piconim 0.4.0
 
   lcdClr = 0x01
   lcdHome = 0x02
@@ -48,7 +49,7 @@ var
   
 type 
   Lcd* = ref object 
-    i2c: I2cInst
+    i2c: ptr I2cInst
     lcdAdd: uint8
     numLines, numColum: uint8
     cursorX, cursorY: uint8
@@ -68,7 +69,7 @@ proc makeArray[T](charmap: array[0..7, T]): array[0..7, uint8]
 proc addHead(strg: string, chr: char): string
 
 #---------- declaration of public procedures ----------
-proc newDisplay*(i2c: I2cInst, lcdAdd:uint8, numLines:uint8, numColum:uint8): Lcd
+proc newDisplay*(i2c: ptr I2cInst, lcdAdd:uint8, numLines:uint8, numColum:uint8): Lcd
 proc clearLine*(self: Lcd)
 proc clear*(self: Lcd)
 proc moveTo*(self: Lcd, columx, rowx: uint8)
@@ -88,7 +89,8 @@ proc hideCursor*(self: Lcd)
 proc lcdSendByte(self: Lcd, valore: uint8) =
   let addVal = valore.unsafeAddr
   let lenn = csize_t(1)#valore.len*seizeof(valore))
-  writeBlocking(self.i2c, self.lcdAdd, addVal, lenn, true)
+  #discard writeBlocking(i2cBlok, 0x50.I2cAddress, dato_add, dato_len, true)
+  discard writeBlocking(self.i2c, self.lcdAdd.I2cAddress, addVal, lenn, true)
 
 proc lcdWriteWord(self: Lcd, command: uint8) =
   var temp = command
@@ -105,7 +107,7 @@ proc lcdSendCommandInit(self: Lcd, comm: uint8) = #ok tramette correto l'init!!
   buf = buf or 0x04
   self.lcdWriteWord(buf)
   #print("CommandIni1: " & $buf & '\n')
-  sleep(2)
+  sleepMs(2)
   buf = buf and 0xfb
   self.lcdWriteWord(buf)
   #print("CommandIni2: " & $buf & '\n')
@@ -122,7 +124,7 @@ proc lcdSendCommand(self: Lcd, comm: uint8) =  #ok funziona!!!
   self.lcdWriteWord(buf)
   #print("Command4: " & $buf & '\n')
   if comm <= 3:
-    sleep(5)
+    sleepMs(5)
 
 proc lcdWriteData(self: Lcd, data: uint8) =
   var buf = (lcdMaskRs or (lcdBackLight shl lcdShiftBackLight) or (((data shr 0x04) and 0x0f) shl lcdShiftData))
@@ -168,7 +170,7 @@ proc lcdShiftSx(self: Lcd, strg: string, speed: uint16, dir: bool, cross=false, 
     self.cursorX = self.numColum - uint8(len(fString)) #calcola posizione inizio stringa
     self.moveTo(self.cursorX, self.cursorY) #muovi ora il cursore li
     self.putString(fString) #stampa la stringa
-    sleep(speed)
+    sleepMs(speed)
 
 proc lcdShiftDx(self: Lcd, strg: string, speed: uint16, dir: bool, cross=false, effect: uint8) =
   var strgCopy = strg
@@ -182,7 +184,7 @@ proc lcdShiftDx(self: Lcd, strg: string, speed: uint16, dir: bool, cross=false, 
     self.cursorX = 0
     self.moveTo(self.cursorX, self.cursorY) #muovi ora il cursore li
     self.putString(fString) #stampa la stringa
-    sleep(speed)
+    sleepMs(speed)
 
 proc lcdCross(self: Lcd, strg: string, dir : bool, effect: uint8): string =
   let lenstrg: uint8 = uint8(len(strg))
@@ -201,13 +203,13 @@ proc lcdCross(self: Lcd, strg: string, dir : bool, effect: uint8): string =
   
 proc initDisplay(self: Lcd) =
   self.lcdSendCommandInit(lcdFunctionReset)
-  sleep(5)
+  sleepMs(5)
   self.lcdSendCommandInit(lcdFunctionReset)
-  sleep(5)
+  sleepMs(5)
   self.lcdSendCommandInit(lcdFunctionReset)
-  sleep(5)
+  sleepMs(5)
   self.lcdSendCommandInit(lcdFunction)
-  sleep(5)
+  sleepMs(5)
   if self.numLines > 4:
     self.numLines = 4
   if self.numColum > 40:
@@ -268,7 +270,7 @@ proc shiftChar*(self: Lcd, charx: char, speed: uint16=400, dir=true) = #move the
   if dir == true:
     for _ in countup(0, 16):
       self.lcdWriteData(uint8(ord(charx)))
-      sleep(speed)
+      sleepMs(speed)
       self.moveTo(columx = self.cursorX, rowx = self.cursorY)
       self.lcdWriteData(uint8(ord(' ')))
       self.cursorX = self.cursorX + 1
@@ -277,7 +279,7 @@ proc shiftChar*(self: Lcd, charx: char, speed: uint16=400, dir=true) = #move the
     self.moveTo(columx = 16, rowx = self.cursorY)
     for _ in countdown(16, 0):
       self.lcdWriteData(uint8(ord(charx)))
-      sleep(speed)
+      sleepMs(speed)
       self.moveTo(columx = self.cursorX, rowx = self.cursorY)
       self.lcdWriteData(uint8(ord(' ')))
       self.cursorX = self.cursorX - 1
@@ -296,7 +298,7 @@ proc putString*(self: Lcd, strg: string) = #print the string on the display
   if lenstrg <= self.numColum: # da mettere <= ;intest >
     for charx in strg:
       self.putChar(charx)
-      #sleep(5)
+      #sleepMs(5)
   else:
     discard
     self.shiftString(strg)
@@ -353,10 +355,10 @@ proc customChar*[T](self: Lcd, location: uint8, charmap: array[0..7, T])= #macke
   let charOk = makeArray(charmap)
   let location = location and 0x07
   self.lcdSendCommand(lcdCgRam or (location shl uint8(3)))
-  sleepMicroseconds(40)
+  sleepUs(40)
   for line in 0..7:
     self.lcdWriteData(charOk[line])
-    sleepMicroseconds(40)
+    sleepUs(40)
   self.moveTo(self.cursorX, self.cursorY)
 
 proc displayOn*(self: Lcd) =
@@ -400,7 +402,7 @@ proc clear*(self: Lcd) =
   self.cursorX = 0 
   self.cursorY = 0
 
-proc newDisplay*(i2c: I2cInst, lcdAdd:uint8, numLines:uint8, numColum:uint8): Lcd =
+proc newDisplay*(i2c: ptr I2cInst, lcdAdd:uint8, numLines:uint8, numColum:uint8): Lcd =
   ## Display initiator
   ##
   runnableExamples:
@@ -434,4 +436,4 @@ when isMainModule:
     lcd.moveTo(0,1)
     lcd.centerString("Ver: " & disp1602Ver)
     #lcd.shiftString("Ver: " & disp1602Ver, dir = true, cross = true, effect = 0)
-    sleep(1500)
+    sleepMs(1500)
