@@ -9,12 +9,14 @@ testet with Nim 1.6.6
 ## (HHD44780) via the I2C connection (with PCF8574 module).
 from sequtils import toSeq
 from math import round
-import picostdlib/pico/[stdio, time]
-import picostdlib/hardware/[gpio, i2c]
-#import picostdlib
+#import picostdlib/[stdio, time]
+import picostdlib
+import picostdlib/hardware/[i2c, gpio]
+import picostdlib/pico/[time, stdio]
+
 
 const 
-  disp1602Ver* = "1.3.0" #for piconim 0.4.0
+  disp1602Ver* = "2.0.0" #not moor REF.
 
   lcdClr = 0x01
   lcdHome = 0x02
@@ -48,7 +50,7 @@ var
 
   
 type 
-  Lcd* = ref object 
+  Lcd* =  object #ver 2.0.0 not more ref.
     i2c: ptr I2cInst
     lcdAdd: uint8
     numLines, numColum: uint8
@@ -61,24 +63,24 @@ proc lcdSendCommandInit(self: Lcd, comm: uint8)
 proc lcdSendCommand(self: Lcd, comm: uint8)
 proc lcdWriteData(self: Lcd, data: uint8)
 proc lcdFormatStr(self: Lcd, strg: string, dir: bool): string
-proc lcdShiftSx(self: Lcd, strg: string, speed: uint16, dir: bool, cross=false, effect: uint8) 
-proc lcdShiftDx(self: Lcd, strg: string, speed: uint16, dir: bool, cross=false, effect: uint8)
+proc lcdShiftSx(self: var Lcd, strg: string, speed: uint16, dir: bool, cross=false, effect: uint8) 
+proc lcdShiftDx(self: var Lcd, strg: string, speed: uint16, dir: bool, cross=false, effect: uint8)
 proc lcdCross(self: Lcd, strg: string, dir: bool, effect: uint8=0): string
 proc toString(self: Lcd, seqx: seq[char]): string
 proc makeArray[T](charmap: array[0..7, T]): array[0..7, uint8]
 proc addHead(strg: string, chr: char): string
 
 #---------- declaration of public procedures ----------
-proc newDisplay*(i2c: ptr I2cInst, lcdAdd:uint8, numLines:uint8, numColum:uint8): Lcd
-proc clearLine*(self: Lcd)
-proc clear*(self: Lcd)
-proc moveTo*(self: Lcd, columx, rowx: uint8)
-proc putChar*(self: Lcd, charx: char)
-proc putString*(self: Lcd, strg: string)
-proc centerString*(self: Lcd, strg: string)
-proc shiftChar*(self: Lcd, charx: char, speed: uint16=400, dir=true)
-proc shiftString*(self: Lcd, strg: string, speed: uint16=400, dir=true, cross=false, effect: uint8=0)
-proc customChar*[T](self: Lcd, location: uint8, charmap: array[0..7, T])
+proc initDisplay*(i2c: ptr I2cInst, lcdAdd:uint8, numLines:uint8, numColum:uint8): Lcd
+proc clearLine*(self: var Lcd)
+proc clear*(self: var Lcd)
+proc moveTo*(self: var Lcd, columx, rowx: uint8)
+proc putChar*(self: var Lcd, charx: char)
+proc putString*(self: var Lcd, strg: string)
+proc centerString*(self: var Lcd, strg: string)
+proc shiftChar*(self: var Lcd, charx: char, speed: uint16=400, dir=true)
+proc shiftString*(self: var Lcd, strg: string, speed: uint16=400, dir=true, cross=false, effect: uint8=0)
+proc customChar*[T](self: var Lcd, location: uint8, charmap: array[0..7, T])
 proc displayOn*(self: Lcd)
 proc displayOff*(self: Lcd)
 proc backLightOn*(self: Lcd)
@@ -89,8 +91,7 @@ proc hideCursor*(self: Lcd)
 proc lcdSendByte(self: Lcd, valore: uint8) =
   let addVal = valore.unsafeAddr
   let lenn = csize_t(1)#valore.len*seizeof(valore))
-  #discard writeBlocking(i2cBlok, 0x50.I2cAddress, dato_add, dato_len, true)
-  discard writeBlocking(self.i2c, self.lcdAdd.I2cAddress, addVal, lenn, true)
+  discard writeBlocking(self.i2c, self.lcdAdd.I2CAddress, addVal, lenn, true)
 
 proc lcdWriteWord(self: Lcd, command: uint8) =
   var temp = command
@@ -158,7 +159,7 @@ proc addHead(strg: string, chr: char): string =
   result.add(chr & strg)
 
 
-proc lcdShiftSx(self: Lcd, strg: string, speed: uint16, dir: bool, cross=false, effect: uint8) =
+proc lcdShiftSx(self: var Lcd, strg: string, speed: uint16, dir: bool, cross=false, effect: uint8) =
   var strgCopy = strg
   var dinamicString: string
   if cross == true:
@@ -172,7 +173,7 @@ proc lcdShiftSx(self: Lcd, strg: string, speed: uint16, dir: bool, cross=false, 
     self.putString(fString) #stampa la stringa
     sleepMs(speed)
 
-proc lcdShiftDx(self: Lcd, strg: string, speed: uint16, dir: bool, cross=false, effect: uint8) =
+proc lcdShiftDx(self: var Lcd, strg: string, speed: uint16, dir: bool, cross=false, effect: uint8) =
   var strgCopy = strg
   var dinamicString: string
   if cross == true:
@@ -201,7 +202,7 @@ proc lcdCross(self: Lcd, strg: string, dir : bool, effect: uint8): string =
   else:
     result = buildString & strg
   
-proc initDisplay(self: Lcd) =
+proc initDisplay(self: var Lcd) =
   self.lcdSendCommandInit(lcdFunctionReset)
   sleepMs(5)
   self.lcdSendCommandInit(lcdFunctionReset)
@@ -226,7 +227,7 @@ proc initDisplay(self: Lcd) =
   self.displayOn()
 
 #---------- public procedures ----------
-proc moveTo*(self: Lcd, columx, rowx: uint8) =
+proc moveTo*(self: var Lcd, columx, rowx: uint8) =
   ## Move the cursor to the indicated position
   ##
   runnableExamples:
@@ -243,7 +244,7 @@ proc moveTo*(self: Lcd, columx, rowx: uint8) =
     addrx = addrx + self.numColum
   self.lcdSendCommand(lcdDdRam or addrx)
 
-proc putChar*(self: Lcd, charx: char) = #prints a single character
+proc putChar*(self: var Lcd, charx: char) = #prints a single character
   ## Write an ASCII character from the position indicated with moveTo()
   ##
   runnableExamples:
@@ -257,7 +258,7 @@ proc putChar*(self: Lcd, charx: char) = #prints a single character
     self.cursorX = self.numColum - 1
   self.moveTo(columx = self.cursorX, rowx = self.cursorY)
 
-proc shiftChar*(self: Lcd, charx: char, speed: uint16=400, dir=true) = #move the single character on the line
+proc shiftChar*(self: var Lcd, charx: char, speed: uint16=400, dir=true) = #move the single character on the line
   ##  and move the single ASCII character on the display
   ##
   runnableExamples:
@@ -285,7 +286,7 @@ proc shiftChar*(self: Lcd, charx: char, speed: uint16=400, dir=true) = #move the
       self.cursorX = self.cursorX - 1
       self.moveTo(columx = self.cursorX, rowx = self.cursorY)
 
-proc putString*(self: Lcd, strg: string) = #print the string on the display 
+proc putString*(self: var Lcd, strg: string) = #print the string on the display 
   ## Write  string ASCII character from the position indicated with moveTo()
   ##
   runnableExamples:
@@ -303,7 +304,7 @@ proc putString*(self: Lcd, strg: string) = #print the string on the display
     discard
     self.shiftString(strg)
 
-proc shiftString*(self: Lcd, strg: string, speed: uint16=400, dir=true, cross=false, effect: uint8=0) = 
+proc shiftString*(self: var Lcd, strg: string, speed: uint16=400, dir=true, cross=false, effect: uint8=0) = 
   ## Write and move the string on the display
   ##
   runnableExamples:
@@ -320,7 +321,7 @@ proc shiftString*(self: Lcd, strg: string, speed: uint16=400, dir=true, cross=fa
   else:
     self.lcdShiftDx(strg, speed, dir, cross, effect) #dx
 
-proc clearLine*(self: Lcd) =  
+proc clearLine*(self: var Lcd) =  
   ## Clear the only line where the cursor is located
   ##
   runnableExamples:
@@ -333,7 +334,7 @@ proc clearLine*(self: Lcd) =
     poscurX = poscurX + uint8(1)
     self.moveTo(columx = poscurX, rowx = self.cursorY) #moves the cursor one position
 
-proc centerString*(self: Lcd, strg: string) = #prints the string in the center of the display
+proc centerString*(self: var Lcd, strg: string) = #prints the string in the center of the display
   ## Write the string at the center of the display
   ##
   runnableExamples:
@@ -349,7 +350,7 @@ proc centerString*(self: Lcd, strg: string) = #prints the string in the center o
   self.moveTo(columx = posCur, rowx = self.cursorY)
   self.putString(strg)
 
-proc customChar*[T](self: Lcd, location: uint8, charmap: array[0..7, T])= #macke custom char
+proc customChar*[T](self: var Lcd, location: uint8, charmap: array[0..7, T])= #macke custom char
   ## Create custom characters
   ## Watch the example file attached to this module.
   let charOk = makeArray(charmap)
@@ -395,18 +396,18 @@ proc backLightOff*(self: Lcd) =
   #lcdBackLight = 0
   self.lcdSendByte(1)
 
-proc clear*(self: Lcd) = 
+proc clear*(self: var Lcd) = 
   ## It cleans the whole display and place the cursor in 0.0
   self.lcdSendCommand(lcdClr)
   self.lcdSendCommand(lcdHome)
   self.cursorX = 0 
   self.cursorY = 0
 
-proc newDisplay*(i2c: ptr I2cInst, lcdAdd:uint8, numLines:uint8, numColum:uint8): Lcd =
+proc initDisplay*(i2c: ptr I2cInst, lcdAdd:uint8, numLines:uint8, numColum:uint8): Lcd =
   ## Display initiator
   ##
   runnableExamples:
-    newDisplay(i2c=i2c1, lcdAdd=0x27, numLines=2, numColum=16)
+    initDisplay(i2c=i2c1, lcdAdd=0x27, numLines=2, numColum=16)
   ## **Parameters:**
   ## - i2c = name of the block where the display connected (i2c0 or i2c1).
   ## - lcdAdd = hardware address of the display.
@@ -420,11 +421,11 @@ when isMainModule:
   const sda = 2.Gpio 
   const scl = 3.Gpio 
 
-  i2c1.init(100000)
+  discard i2c1.init(100000)
   sda.setFunction(I2C); sda.pullUp()
   scl.setFunction(I2C); scl.pullUp()
 
-  let lcd = newDisplay(i2c=i2c1, lcdAdd=0x27, numLines=2, numColum=16)
+  var lcd = initDisplay(i2c=i2c1, lcdAdd=0x27.uint8, numLines=2, numColum=16)
   let nim = [0x00,0x11,0x15,0x15,0x1f,0x1b,0x1f,0x00]
   lcd.customChar(0, nim)
   while true:
